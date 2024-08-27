@@ -155,8 +155,34 @@ func (r *Repository) runUpdate() error {
 			)
 			return nil
 		}
+		// case when branch does not exist
+		if err == git.ErrBranchNotFound {
+			// fetch remote repo
+			err = repo.Fetch(&git.FetchOptions{Auth: opts.Auth})
+			if err != nil {
+				return fmt.Errorf("Fetching remote repo failed for branch %s with error %w", r.Config.Branch, err)
+			}
+
+			// validate repo exists on remote origin
+			_, err = repo.Reference(plumbing.NewBranchReferenceName(r.Config.Branch), true)
+			if err != nil {
+				return fmt.Errorf("Remote does not contain branch %s", r.Config.Branch)
+			}
+
+			// checkout the branch name
+			err := w.Checkout(&git.CheckoutOptions{Branch: plumbing.ReferenceName(r.Config.Branch)})
+			if err != nil {
+				return fmt.Errorf("Branch checkout for branch name %s failed with error %w", r.Config.Branch, err)
+			}
+
+			// try pull again
+			if err := w.Pull(opts); err != nil {
+				return fmt.Errorf("git pull after checkout failed for branch name %s failed with error %w", r.Config.Branch, err)
+			}
+		}
 		return err
 	}
+
 	ref, err := repo.Head()
 	if err != nil {
 		return err
